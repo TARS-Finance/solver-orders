@@ -1,0 +1,117 @@
+steps:
+  # --- Staging -
+  - name: build-push-amd64-staging
+    image: woodpeckerci/plugin-docker-buildx
+    privileged: true
+    settings:
+      registry: docker.io
+      username:
+        from_secret: DOCKER_USERNAME
+      password:
+        from_secret: DOCKER_PASSWORD
+      repo: hashiraio/${CI_REPO_NAME}
+      dockerfile: Dockerfile
+      platforms: linux/amd64
+      tags: amd64-staging
+      build_args:
+        GHPAT:
+          from_secret: GH_PAT
+    when:
+      event: [push, manual]
+      branch:
+        - staging
+
+  - name: build-push-arm64-staging
+    image: woodpeckerci/plugin-docker-buildx
+    privileged: true
+    settings:
+      registry: docker.io
+      username:
+        from_secret: DOCKER_USERNAME
+      password:
+        from_secret: DOCKER_PASSWORD
+      repo: hashiraio/${CI_REPO_NAME}
+      dockerfile: Dockerfile
+      platforms: linux/arm64
+      tags: arm64-staging
+      build_args:
+        GHPAT:
+          from_secret: GH_PAT
+    when:
+      event: [push, manual]
+      branch:
+        - staging
+
+  - name: create-manifest-staging
+    image: docker:24-cli
+    environment:
+      DOCKER_CLI_EXPERIMENTAL: enabled
+      DOCKER_USERNAME:
+        from_secret: DOCKER_USERNAME
+      DOCKER_PASSWORD:
+        from_secret: DOCKER_PASSWORD
+    commands:
+      - echo "Creating multi-arch manifest for staging..."
+      - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+      # Validate images
+      - docker manifest inspect hashiraio/${CI_REPO_NAME}:amd64-staging || echo "AMD64 image missing"
+      - docker manifest inspect hashiraio/${CI_REPO_NAME}:arm64-staging || echo "ARM64 image missing"
+
+      # Create manifest list as 'latest'
+      - docker buildx imagetools create -t hashiraio/${CI_REPO_NAME}:latest hashiraio/${CI_REPO_NAME}:amd64-staging hashiraio/${CI_REPO_NAME}:arm64-staging
+
+      # Verify manifest
+      - docker manifest inspect hashiraio/${CI_REPO_NAME}:latest
+      - echo "Multi-arch manifest for staging created successfully!"
+    depends_on:
+      - build-push-amd64-staging
+      - build-push-arm64-staging
+    when:
+      event: [push, manual]
+      branch:
+        - staging
+
+  # --- Testnet ---
+  - name: build-push-amd64-testnet
+    image: woodpeckerci/plugin-docker-buildx
+    privileged: true
+    settings:
+      registry: docker.io
+      username:
+        from_secret: DOCKER_USERNAME
+      password:
+        from_secret: DOCKER_PASSWORD
+      repo: hashiraio/${CI_REPO_NAME}
+      dockerfile: Dockerfile
+      platforms: linux/amd64
+      tags: amd64-testnet
+      build_args:
+        GHPAT:
+          from_secret: GH_PAT
+    when:
+      event: [push, manual]
+      branch:
+        - testnet
+
+  # --- Mainnet ---
+  - name: build-push-amd64-main
+    image: woodpeckerci/plugin-docker-buildx
+    privileged: true
+    settings:
+      registry: docker.io
+      username:
+        from_secret: DOCKER_USERNAME
+      password:
+        from_secret: DOCKER_PASSWORD
+      repo: hashiraio/${CI_REPO_NAME}
+      dockerfile: Dockerfile
+      platforms: linux/amd64
+      tags: amd64-mainnet
+      build_args:
+        GHPAT:
+          from_secret: GH_PAT
+    when:
+      event: [push, manual]
+      branch:
+        - main

@@ -1,0 +1,56 @@
+[package]
+name = "solver-orders"
+version = "0.1.0"
+edition = "2024"
+# Enable link-time optimization in release mode
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+panic = "abort"
+
+[dependencies]
+tars = { git = "https://github.com/TARS-Finance/Tars-rs.git", rev = "968251331f9eeb72ce88c2c75190732103a2164e", features = [
+    "orderbook",
+    "api",
+    "utils",
+    "orderbook-test-utils",
+] }
+axum = "0.7.5"
+config = "0.15.7"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+tokio = { version = "1.43.0", features = ["full", "rt-multi-thread"] }
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+tower = { version = "0.5.0", features = ["limit"] }
+tower-http = { version = "0.6.2", features = [
+    "trace",
+    "cors",
+    "compression-gzip",
+    "compression-br",
+    "timeout",
+    "limit"
+] }
+reqwest = { version = "0.12.5", features = [
+    "json",
+    "gzip",
+    "brotli",
+    "rustls-tls",
+    "trust-dns",
+] }
+moka = { version = "0.12.10", features = ["future"] }
+futures = "0.3.30"
+fastrand = "2.0.1"
+libc = "0.2"
+sqlx = { version = "^0.8.6", features = [
+    "runtime-tokio",
+    "tls-native-tls",
+    "postgres",
+    "derive",
+    "macros",
+    "bigdecimal",
+    "chrono",
+    "json",
+] }
+vault-rs = { git = "https://version.affine.trading/hashiraio/vault-rs", rev = "7ee31ecf3657c3d1b39d9c404de0803981fa9f47", version = "0.1.0" }
