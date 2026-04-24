@@ -30,3 +30,4 @@ Thumbs.db
 
 # Settings file
 Settings.toml
+.codegraph/

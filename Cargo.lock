@@ -6667,7 +6667,6 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 [[package]]
 name = "vault-rs"
 version = "0.1.0"
-source = "git+https://version.affine.trading/hashiraio/vault-rs?rev=7ee31ecf3657c3d1b39d9c404de0803981fa9f47#7ee31ecf3657c3d1b39d9c404de0803981fa9f47"
 dependencies = [
  "eyre",
  "reqwest",

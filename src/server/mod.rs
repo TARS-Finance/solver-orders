@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI64;
 use std::time::Duration;
 
 use tars::orderbook::primitives::MatchedOrderVerbose;
@@ -30,10 +31,16 @@ impl Server {
     pub fn new(
         port: i32,
         orders_cache: Arc<Cache<String, HashMap<String, Vec<MatchedOrderVerbose>>>>,
+        last_sync: Arc<AtomicI64>,
+        polling_interval_ms: u64,
     ) -> Self {
         Self {
             port,
-            state: HandlerState { orders_cache },
+            state: HandlerState {
+                orders_cache,
+                last_sync,
+                polling_interval_ms,
+            },
         }
     }
 

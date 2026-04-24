@@ -53,4 +53,4 @@ sqlx = { version = "^0.8.6", features = [
     "chrono",
     "json",
 ] }
-vault-rs = { git = "https://version.affine.trading/hashiraio/vault-rs", rev = "7ee31ecf3657c3d1b39d9c404de0803981fa9f47", version = "0.1.0" }
+vault-rs = { path = "/Users/svssathvik/.cargo/git/checkouts/vault-rs-fb6c7c7cec784867/7ee31ec" }

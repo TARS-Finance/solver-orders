@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{Arc, atomic::AtomicI64},
+    time::Duration,
+};
 
 use tars::{
     orderbook::{OrderbookProvider, primitives::MatchedOrderVerbose},
@@ -62,30 +66,45 @@ async fn main() {
     // Setup cache with optimized configuration
     let cache: Arc<PendingOrdersCache> = Arc::new(
         CacheBuilder::new(MAX_CACHE_SIZE)
-            // Set time-to-live (TTL) - entry expires after this duration since creation
             .time_to_live(CACHE_TTL)
-            // Set time-to-idle (TTI) - entry expires if not accessed for this duration
             .time_to_idle(CACHE_TTI)
-            // Add direct initial capacity to avoid resizing
             .initial_capacity(100)
-            // Reduce delay for expired entries removal to improve memory usage
             .build(),
     );
 
-    // Setup cache syncer that will update the cache every polling interval
+    // Shared timestamp (unix millis) of the last successful sync, used by /health
+    // to detect a dead syncer instead of silently serving an empty cache.
+    let last_sync = Arc::new(AtomicI64::new(0));
+
     let cache_syncer = cache::CacheSyncer::new(
         Arc::clone(&orderbook),
         settings.polling_interval,
         Arc::clone(&cache),
+        Arc::clone(&last_sync),
     );
 
-    // Spawn cache syncer in a separate thread
-    let _ = tokio::spawn(async move {
+    let syncer_handle = tokio::spawn(async move {
         cache_syncer.run().await;
     });
 
-    // Setup server
-    let server = server::Server::new(settings.port, Arc::clone(&cache));
-    // Run server
-    server.run().await;
+    let server = server::Server::new(
+        settings.port,
+        Arc::clone(&cache),
+        Arc::clone(&last_sync),
+        settings.polling_interval,
+    );
+
+    // If the syncer task ever exits (panic or otherwise), take the whole process
+    // down so the external supervisor restarts us. Silent syncer death is the
+    // bug we keep hitting in prod.
+    tokio::select! {
+        res = syncer_handle => {
+            tracing::error!(?res, "cache syncer task exited unexpectedly; shutting down");
+            std::process::exit(1);
+        }
+        _ = server.run() => {
+            tracing::error!("http server exited; shutting down");
+            std::process::exit(1);
+        }
+    }
 }

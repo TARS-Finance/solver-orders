@@ -1,6 +1,14 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::{Arc, atomic::{AtomicI64, Ordering}},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-use axum::extract::{Path, Query, State};
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+};
 use tars::{
     api::primitives::{ApiResult, Response},
     orderbook::primitives::MatchedOrderVerbose,
@@ -13,6 +21,8 @@ use tracing::{info, warn};
 #[derive(Clone)]
 pub struct HandlerState {
     pub orders_cache: Arc<Cache<String, HashMap<String, Vec<MatchedOrderVerbose>>>>,
+    pub last_sync: Arc<AtomicI64>,
+    pub polling_interval_ms: u64,
 }
 
 #[derive(Deserialize)]
@@ -20,45 +30,43 @@ pub struct SolverQuery {
     pub solver: Option<String>,
 }
 
-/// Health check endpoint that returns the service status
-///
-/// # Returns
-/// * A static string indicating the service is online
-pub async fn get_health() -> &'static str {
-    "Online"
+/// Returns 200 "Online" when the cache syncer has produced a successful poll
+/// within 3 polling intervals; otherwise 503. This is what turns a dead syncer
+/// into a loud failure instead of a silently empty cache.
+pub async fn get_health(State(state): State<Arc<HandlerState>>) -> impl IntoResponse {
+    let last = state.last_sync.load(Ordering::Relaxed);
+    if last == 0 {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Starting").into_response();
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let staleness_ms = (now - last).max(0) as u64;
+    let stale_threshold = state.polling_interval_ms.saturating_mul(3);
+    if staleness_ms > stale_threshold {
+        warn!(staleness_ms, stale_threshold, "cache is stale");
+        return (StatusCode::SERVICE_UNAVAILABLE, "Stale").into_response();
+    }
+    (StatusCode::OK, "Online").into_response()
 }
 
-/// Returns the pending orders for a specific chain identifier.
-///
-/// # Arguments
-/// * `chain_identifier` - The identifier of the chain to retrieve pending orders for.
-/// * `solver` - Optional solver ID to filter orders by specific solver.
-///
-/// # Returns
-/// * `ApiResult<Vec<MatchedOrderVerbose>>` - On success, a vector of pending orders for the specified chain identifier. On error, a string describing the error.
 pub async fn get_pending_orders_by_chain(
     State(state): State<Arc<HandlerState>>,
     Path(chain_identifier): Path<String>,
     Query(query): Query<SolverQuery>,
 ) -> ApiResult<Vec<MatchedOrderVerbose>> {
-    // Get solver orders map from cache
     let solver_orders_map = match state.orders_cache.get(&chain_identifier).await {
         Some(map) => map,
         None => {
-            // No entry in cache, log and return empty result
-            warn!(
-                chain = %chain_identifier,
-                "no cache entry found"
-            );
+            warn!(chain = %chain_identifier, "no cache entry found");
             return Ok(Response::ok(Vec::new()));
         }
     };
 
     let pending_orders = if let Some(solver_id) = &query.solver {
-        // Return orders for specific solver
         solver_orders_map.get(&solver_id.to_lowercase()).cloned().unwrap_or_default()
     } else {
-        // Return orders for all solvers
         let mut all_orders = Vec::new();
         for orders in solver_orders_map.values() {
             all_orders.extend(orders.iter().cloned());
@@ -75,26 +83,17 @@ pub async fn get_pending_orders_by_chain(
     Ok(Response::ok(pending_orders))
 }
 
-/// Returns all pending orders for all chains
-///
-/// # Arguments
-/// * `solver` - Optional solver ID to filter orders by specific solver.
-///
-/// # Returns
-/// * `ApiResult<Vec<MatchedOrderVerbose>>` - On success, a vector of pending orders of all chains. On error, a string describing the error.
 pub async fn get_all_pending_orders(
     State(state): State<Arc<HandlerState>>,
     Query(query): Query<SolverQuery>,
 ) -> ApiResult<Vec<MatchedOrderVerbose>> {
-    // Collect all orders from all chains and all solvers
     let mut all_pending_orders = Vec::new();
     let mut seen_ids = HashSet::new();
-    
+
     for entry in state.orders_cache.iter() {
         let chain_identifier = entry.0.as_str();
         if let Some(solver_orders_map) = state.orders_cache.get(chain_identifier).await {
             if let Some(solver_id) = &query.solver {
-                // Filter by specific solver
                 if let Some(orders) = solver_orders_map.get(&solver_id.to_lowercase()) {
                     for order in orders {
                         if seen_ids.insert(order.create_order.create_id.clone()) {
@@ -103,7 +102,6 @@ pub async fn get_all_pending_orders(
                     }
                 }
             } else {
-                // Include all solvers
                 for orders in solver_orders_map.values() {
                     for order in orders {
                         if seen_ids.insert(order.create_order.create_id.clone()) {
@@ -114,19 +112,15 @@ pub async fn get_all_pending_orders(
             }
         }
     }
-    
-    if all_pending_orders.is_empty() {
-        // Fast path for empty results - avoid unnecessary processing
-        return Ok(Response::ok(Vec::new()));
-    }
-    
+
     info!(
         solver = ?query.solver,
-        orders_count = all_pending_orders.len(), 
+        orders_count = all_pending_orders.len(),
         "collected all pending orders"
     );
     Ok(Response::ok(all_pending_orders))
 }
+
 #[cfg(test)]
 mod tests {
     use crate::server::Server;
@@ -149,8 +143,7 @@ mod tests {
 
         let url = format!("{}/{}", API_URL, chain_identifier);
 
-        // Simple retry with exponential backoff for network issues
-        let mut retry_delay = 100; // Start at 100ms
+        let mut retry_delay = 100;
         for attempt in 1..=3 {
             match client.get(&url).send().await {
                 Ok(response) => {
@@ -158,26 +151,23 @@ mod tests {
                     return Ok(api_response.result.unwrap_or_default());
                 }
                 Err(e) if e.is_connect() || e.is_timeout() && attempt < 3 => {
-                    // Sleep with exponential backoff for connection issues
                     tokio::time::sleep(std::time::Duration::from_millis(retry_delay)).await;
-                    retry_delay *= 2; // Exponential backoff
+                    retry_delay *= 2;
                 }
                 Err(e) => return Err(e),
             }
         }
 
-        // Final attempt
         let response = client.get(url).send().await?;
         let api_response: Response<Vec<MatchedOrderVerbose>> = response.json().await?;
         Ok(api_response.result.unwrap_or_default())
     }
-    
+
     async fn get_all_pending_orders() -> Result<Vec<MatchedOrderVerbose>, reqwest::Error> {
         let url = format!("{}/", API_URL);
         let client = reqwest::Client::new();
 
-        // Simple retry with exponential backoff for network issues
-        let mut retry_delay = 100; // Start at 100ms
+        let mut retry_delay = 100;
         for attempt in 1..=3 {
             match client.get(&url).send().await {
                 Ok(response) => {
@@ -185,15 +175,13 @@ mod tests {
                     return Ok(api_response.result.unwrap_or_default());
                 }
                 Err(e) if e.is_connect() || e.is_timeout() && attempt < 3 => {
-                    // Sleep with exponential backoff for connection issues
                     tokio::time::sleep(std::time::Duration::from_millis(retry_delay)).await;
-                    retry_delay *= 2; // Exponential backoff
+                    retry_delay *= 2;
                 }
                 Err(e) => return Err(e),
             }
         }
 
-        // Final attempt
         let response = client.get(url).send().await?;
         let api_response: Response<Vec<MatchedOrderVerbose>> = response.json().await?;
         Ok(api_response.result.unwrap_or_default())
@@ -201,7 +189,13 @@ mod tests {
 
     async fn setup_server() {
         let cache = Arc::new(Cache::builder().build());
-        let server = Server::new(4596, cache);
+        let last_sync = Arc::new(AtomicI64::new(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
+        ));
+        let server = Server::new(4596, cache, last_sync, 2000);
         INIT.call_once(|| {
             tokio::spawn(async move {
                 server.run().await;
@@ -216,7 +210,7 @@ mod tests {
         dbg!(&pending_orders);
         assert!(pending_orders.is_ok());
     }
-    
+
     #[tokio::test]
     async fn test_all_pending_orders_handler() {
         setup_server().await;

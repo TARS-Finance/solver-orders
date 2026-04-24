@@ -1,3 +1,3 @@
-db_url = "postgres://postgres:postgres@localhost:5433/garden"
+db_url = "postgresql://neondb_owner:npg_qGXRdWZx45Pt@ep-still-firefly-am6lxjgw-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 port = 4596
 polling_interval = 2000
