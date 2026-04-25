@@ -8,8 +8,8 @@ use tars::{
     orderbook::{OrderbookProvider, primitives::MatchedOrderVerbose},
     utils::setup_tracing_with_webhook,
 };
+use config::{Config, File, FileFormat};
 use moka::future::{Cache, CacheBuilder};
-use vault_rs::ConfigType;
 
 mod cache;
 mod server;
@@ -38,11 +38,18 @@ struct Settings {
     pub discord_webhook_url: Option<String>,
 }
 
+fn load_settings() -> Settings {
+    Config::builder()
+        .add_source(File::new(SETTINGS_FILE_NAME, FileFormat::Toml))
+        .build()
+        .expect("error loading config from file")
+        .try_deserialize()
+        .expect("error deserializing config")
+}
+
 #[tokio::main]
 async fn main() {
-    let settings: Settings = vault_rs::get_config(SETTINGS_FILE_NAME, ConfigType::Toml)
-        .await
-        .expect("error loading config from vault");
+    let settings = load_settings();
 
     // Setup tracing with webhook if discord webhook url is provided
     match settings.discord_webhook_url.clone() {

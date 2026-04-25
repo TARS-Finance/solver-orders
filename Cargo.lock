@@ -5572,7 +5572,6 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
- "vault-rs",
 ]
 
 [[package]]
@@ -6209,15 +6208,8 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "toml_write",
  "winnow",
 ]
-
-[[package]]
-name = "toml_write"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "tonic"
@@ -6663,17 +6655,6 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
-
-[[package]]
-name = "vault-rs"
-version = "0.1.0"
-dependencies = [
- "eyre",
- "reqwest",
- "serde",
- "serde_json",
- "toml",
-]
 
 [[package]]
 name = "vcpkg"

@@ -53,4 +53,3 @@ sqlx = { version = "^0.8.6", features = [
     "chrono",
     "json",
 ] }
-vault-rs = { path = "/Users/svssathvik/.cargo/git/checkouts/vault-rs-fb6c7c7cec784867/7ee31ec" }
