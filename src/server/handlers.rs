@@ -9,6 +9,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
+use crate::cache::normalize_solver_id;
 use tars::{
     api::primitives::{ApiResult, Response},
     orderbook::primitives::MatchedOrderVerbose,
@@ -65,7 +66,8 @@ pub async fn get_pending_orders_by_chain(
     };
 
     let pending_orders = if let Some(solver_id) = &query.solver {
-        solver_orders_map.get(&solver_id.to_lowercase()).cloned().unwrap_or_default()
+        let key = normalize_solver_id(solver_id, &chain_identifier);
+        solver_orders_map.get(&key).cloned().unwrap_or_default()
     } else {
         let mut all_orders = Vec::new();
         for orders in solver_orders_map.values() {
@@ -94,7 +96,8 @@ pub async fn get_all_pending_orders(
         let chain_identifier = entry.0.as_str();
         if let Some(solver_orders_map) = state.orders_cache.get(chain_identifier).await {
             if let Some(solver_id) = &query.solver {
-                if let Some(orders) = solver_orders_map.get(&solver_id.to_lowercase()) {
+                let key = normalize_solver_id(solver_id, chain_identifier);
+                if let Some(orders) = solver_orders_map.get(&key) {
                     for order in orders {
                         if seen_ids.insert(order.create_order.create_id.clone()) {
                             all_pending_orders.push(order.clone());

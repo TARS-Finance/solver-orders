@@ -13,6 +13,16 @@ use std::{
 // Maximum number of orders to cache per solver per chain
 const MAX_SOLVER_ORDERS_PER_CHAIN: usize = 1000;
 
+/// Bitcoin and Solana addresses are case-sensitive; everything else (EVM, etc.)
+/// is normalized to lowercase. Keep this in sync with the orderbook insert path.
+pub fn normalize_solver_id(addr: &str, chain: &str) -> String {
+    if chain.contains("bitcoin") || chain.contains("solana") {
+        addr.to_string()
+    } else {
+        addr.to_lowercase()
+    }
+}
+
 pub struct CacheSyncer {
     orderbook: Arc<OrderbookProvider>,
     polling_interval: u64,
@@ -116,8 +126,12 @@ impl CacheSyncer {
             let source_chain = &order.create_order.source_chain;
             let dest_chain = &order.create_order.destination_chain;
 
-            let source_solver_id = order.source_swap.redeemer.to_lowercase();
-            let dest_solver_id = order.destination_swap.initiator.to_lowercase();
+            let source_solver_id =
+                normalize_solver_id(&order.source_swap.redeemer, &order.source_swap.chain);
+            let dest_solver_id = normalize_solver_id(
+                &order.destination_swap.initiator,
+                &order.destination_swap.chain,
+            );
 
             chain_solver_orders_map
                 .entry(source_chain.clone())

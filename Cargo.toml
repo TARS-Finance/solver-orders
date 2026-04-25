@@ -10,7 +10,7 @@ opt-level = 3
 panic = "abort"
 
 [dependencies]
-tars = { git = "https://github.com/TARS-Finance/Tars-rs.git", rev = "968251331f9eeb72ce88c2c75190732103a2164e", features = [
+tars = { git = "https://github.com/TARS-Finance/Tars-rs.git", rev = "2baeff0f7c5cb83a06e5fbb258414c374707dbf6", features = [
     "orderbook",
     "api",
     "utils",
