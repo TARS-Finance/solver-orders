@@ -182,7 +182,7 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
 
     use super::*;
-    const DB_URL: &str = "postgres://postgres:postgres@localhost:5433/garden";
+    const DB_URL: &str = "postgres://postgres:postgres@localhost:5433/unipay";
     const POLLING_INTERVAL: u64 = 100;
 
     async fn setup_cache_syncer() -> Arc<PendingOrdersCache> {
